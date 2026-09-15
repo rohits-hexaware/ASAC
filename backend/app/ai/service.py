@@ -58,28 +58,42 @@ class AIService:
         target_max_tokens = max_tokens or settings.max_tokens
 
         # 1. Try Azure OpenAI
-        azure_client = self._get_azure_client()
+        azure_client = self._get_azure_client() if settings.ai_provider == "azure_openai" else None
         if azure_client:
-            try:
-                resp = await azure_client.chat.completions.create(
-                    model=settings.azure_openai_deployment,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": prompt},
-                    ],
-                    response_format={"type": "json_object"},
-                    temperature=0.3,
-                    max_tokens=target_max_tokens,
-                    timeout=settings.agent_timeout,
-                )
-                content = resp.choices[0].message.content or "{}"
-                self.last_provider = "azure_openai"
-                return json.loads(content), "azure_openai"
-            except Exception as e:
-                logger.warning("Azure OpenAI failed: %s", e)
+            azure_prompt = prompt
+            for attempt in range(2):
+                try:
+                    resp = await azure_client.chat.completions.create(
+                        model=settings.azure_openai_deployment,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": azure_prompt},
+                        ],
+                        response_format={"type": "json_object"},
+                        temperature=0.3,
+                        max_tokens=target_max_tokens,
+                        timeout=settings.agent_timeout,
+                    )
+                    content = resp.choices[0].message.content or "{}"
+                    result = json.loads(content)
+                    self.last_provider = "azure_openai"
+                    return result, "azure_openai"
+                except json.JSONDecodeError as e:
+                    if attempt == 0:
+                        azure_prompt = (
+                            f"{prompt}\n\n"
+                            "CRITICAL CONSTRAINT: Return complete valid JSON in a compact form. "
+                            "Limit every JSON array to at most 3 items and keep all descriptions under 15 words."
+                        )
+                        logger.warning("Azure JSON response was incomplete; retrying with compact output: %s", e)
+                    else:
+                        logger.warning("Azure OpenAI returned invalid JSON: %s", e)
+                except Exception as e:
+                    logger.warning("Azure OpenAI failed: %s", e)
+                    break
 
         # 2. Try Standard OpenAI / Groq with retry on 429 & 400 truncation
-        openai_client = self._get_openai_client()
+        openai_client = self._get_openai_client() if settings.ai_provider == "openai" else None
         if openai_client:
             token_budget = target_max_tokens
             current_prompt = prompt
@@ -124,12 +138,13 @@ class AIService:
                         break
 
         # 3. Try Ollama
-        try:
-            result = await self._call_ollama(system_prompt, prompt)
-            self.last_provider = "ollama"
-            return result, "ollama"
-        except Exception as e:
-            logger.warning("Ollama failed: %s", e)
+        if settings.ai_provider == "ollama":
+            try:
+                result = await self._call_ollama(system_prompt, prompt)
+                self.last_provider = "ollama"
+                return result, "ollama"
+            except Exception as e:
+                logger.warning("Ollama failed: %s", e)
 
         # 4. Fallback or Raise based on settings.template_fallback
         if settings.template_fallback:
@@ -148,7 +163,7 @@ class AIService:
         target_max_tokens = max_tokens or settings.max_tokens
 
         # 1. Try Azure OpenAI
-        azure_client = self._get_azure_client()
+        azure_client = self._get_azure_client() if settings.ai_provider == "azure_openai" else None
         if azure_client:
             try:
                 resp = await azure_client.chat.completions.create(
@@ -168,7 +183,7 @@ class AIService:
                 logger.warning("Azure OpenAI text failed: %s", e)
 
         # 2. Try Standard OpenAI / Groq
-        openai_client = self._get_openai_client()
+        openai_client = self._get_openai_client() if settings.ai_provider == "openai" else None
         if openai_client:
             token_budget = target_max_tokens
             for attempt in range(2):
@@ -198,12 +213,13 @@ class AIService:
                         break
 
         # 3. Try Ollama
-        try:
-            text = await self._call_ollama_text(system_prompt, user_prompt)
-            self.last_provider = "ollama"
-            return text, "ollama"
-        except Exception as e:
-            logger.warning("Ollama text failed: %s", e)
+        if settings.ai_provider == "ollama":
+            try:
+                text = await self._call_ollama_text(system_prompt, user_prompt)
+                self.last_provider = "ollama"
+                return text, "ollama"
+            except Exception as e:
+                logger.warning("Ollama text failed: %s", e)
 
         if settings.template_fallback:
             self.last_provider = "template"
