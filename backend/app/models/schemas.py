@@ -19,24 +19,24 @@ class ConfidenceLevel(str, Enum):
 
 
 class ConstraintsInput(BaseModel):
-    cloud: str | None = None
-    budget: str | None = None
-    timeline: str | None = None
+    cloud: str | None = Field(default=None, max_length=200)
+    budget: str | None = Field(default=None, max_length=200)
+    timeline: str | None = Field(default=None, max_length=200)
 
 
 class AnalyzeRequest(BaseModel):
-    project_name: str = Field(..., min_length=1)
-    domain: str = Field(..., min_length=1)
-    business_goals: str = Field(..., min_length=1)
-    functional_requirements: str = Field(..., min_length=1)
+    project_name: str = Field(..., min_length=1, max_length=200)
+    domain: str = Field(..., min_length=1, max_length=200)
+    business_goals: str = Field(..., min_length=1, max_length=10000)
+    functional_requirements: str = Field(..., min_length=1, max_length=20000)
     constraints: ConstraintsInput = Field(default_factory=ConstraintsInput)
-    non_functional_requirements: str = ""
-    compliance: str = ""
+    non_functional_requirements: str = Field(default="", max_length=10000)
+    compliance: str = Field(default="", max_length=5000)
 
 
 class ChatRequest(BaseModel):
-    session_id: str
-    message: str = Field(..., min_length=1)
+    session_id: str = Field(..., min_length=1, max_length=100)
+    message: str = Field(..., min_length=1, max_length=4000)
 
 
 class DiscoveredRequirementItem(BaseModel):

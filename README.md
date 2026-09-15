@@ -212,6 +212,37 @@ npm run dev
 ```
 The React frontend application will be live at `http://localhost:5173`.
 
+### 4. Engineering Quality Notes
+
+#### Scalability and operational design
+
+- The analysis pipeline runs agents sequentially so each stage can consume validated output from the previous stage.
+- Each agent has an independent timeout and failure boundary; completed analyses can resume missing stages.
+- Database persistence separates analysis metadata, generated outputs, uploaded documents, vector chunks, and chat history.
+- RAG retrieval is bounded by `RAG_TOP_K`; chat context is limited to the most recent six messages to keep latency and prompt size predictable.
+- For production scale, move SQLite to PostgreSQL, place uploaded documents and vectors in managed storage, and run pipeline jobs through a queue instead of an in-process request.
+
+#### Functional boundaries and limitations
+
+- The system generates architecture guidance and documentation; it does not provision cloud resources or execute deployment changes.
+- AI responses are grounded in the stored analysis outputs and retrieved project documents. Missing decisions are reported as unspecified rather than invented.
+- Default limits are 2 uploaded documents per discovery request, 2 MB per document, 4,000 characters per chat message, and 60 seconds per agent call.
+- Generated architecture recommendations require human review before implementation, security approval, or compliance sign-off.
+
+#### Testing and observability
+
+The implementation supports positive and negative checks for request validation, provider selection, AI failure handling, JSON parsing, template fallback, session lookup, off-topic refusal, RAG retrieval, and resumable pipeline stages. Backend events use standard Python logging and record provider, agent, session, and retrieval metadata without recording API keys or chat content.
+
+Run the available static validation from `backend`:
+
+```powershell
+.\.venv\Scripts\python.exe -m compileall app
+```
+
+#### Configuration and secrets
+
+Copy `.env.example` to `.env` for local setup. `.env` files, virtual environments, dependency directories, databases, and build output are excluded by `.gitignore`. Provider credentials are validated at startup and must be supplied through environment variables; never commit real keys or include them in logs.
+
 ---
 
 ## 📄 License & Summary

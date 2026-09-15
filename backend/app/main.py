@@ -1,6 +1,7 @@
 """ASAC Backend - AI Solution Architect Copilot."""
 
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,11 @@ from app.rag.retriever import rag_retriever
 
 from app.db.models import init_db
 from app.api.history import router as history_router
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
 
 
 @asynccontextmanager

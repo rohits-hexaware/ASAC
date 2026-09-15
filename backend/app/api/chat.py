@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from fastapi import Depends
 from sqlalchemy.orm import Session
@@ -11,6 +12,8 @@ from app.ai.service import ai_service
 from app.ai.rag import retrieve_relevant_chunks
 from app.db.models import get_db, Analysis, Chunk, ChatMessage as DBChatMessage
 from app.models.schemas import ChatMessage, ChatRequest, ChatResponse
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are ASAC (AI Solution Architect Copilot), a strictly guarded technical copilot specialized ONLY in the active solution architecture project.
 
@@ -43,8 +46,10 @@ def _is_off_topic_query(msg: str) -> bool:
 
 
 async def handle_chat(request: ChatRequest, db: Session) -> ChatResponse:
+    logger.info("Chat request received: session_id=%s message_length=%d", request.session_id, len(request.message))
     analysis = db.query(Analysis).filter(Analysis.id == request.session_id).first()
     if not analysis:
+        logger.warning("Chat session not found: session_id=%s", request.session_id)
         return ChatResponse(
             session_id=request.session_id,
             reply="No analysis session found in database. Please run an analysis first.",
@@ -61,6 +66,7 @@ async def handle_chat(request: ChatRequest, db: Session) -> ChatResponse:
 
     # 0. Immediate pre-guardrail check for obvious off-topic queries
     if _is_off_topic_query(request.message):
+        logger.info("Chat request rejected by pre-guardrail: session_id=%s", request.session_id)
         user_msg = DBChatMessage(analysis_id=request.session_id, role="user", content=request.message)
         bot_msg = DBChatMessage(analysis_id=request.session_id, role="assistant", content=refusal_msg, rag_sources_json="[]")
         db.add(user_msg)
@@ -121,6 +127,7 @@ User Question:
 
     # Query LLM
     reply, provider = await ai_service.complete_text(formatted_system_prompt, user_prompt)
+    logger.info("Chat response generated: session_id=%s provider=%s rag_sources=%d", request.session_id, provider, len(rag_sources))
 
     # Persist chat messages to DB
     user_msg = DBChatMessage(analysis_id=request.session_id, role="user", content=request.message)

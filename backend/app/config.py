@@ -1,6 +1,7 @@
 """Application configuration."""
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -12,7 +13,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    ai_provider: str = "azure_openai"
+    ai_provider: Literal["azure_openai", "openai", "ollama"] = "azure_openai"
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str = "gpt-4o-mini"
