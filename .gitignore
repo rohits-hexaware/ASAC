@@ -1,0 +1,15 @@
+backend/.venv/
+backend/.env
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.next/
+frontend/.next/cache/
+frontend/.next/trace/
+frontend/.next/trace/
+frontend/.env
+*.pyc
+*__pycache__*
+__pycache__/
+*.py[cod]
+backend/data/asac.db
