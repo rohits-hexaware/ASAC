@@ -16,6 +16,7 @@ class Session:
         self.analysis: AnalysisResponse | None = None
         self.intake: dict[str, Any] = {}
         self.chat_messages: list[ChatMessage] = []
+        self.uploaded_docs: list[tuple[str, bytes]] = []
 
 
 class SessionStore:

@@ -27,7 +27,6 @@ async def run_agent(
 ) -> tuple[T, str]:
     """Execute agent with AI + validation, falling back to template."""
     logger.info("[DEBUG] Agent starting execution: '%s'", agent_name)
-    print(f"[DEBUG] Agent starting execution: '{agent_name}'", flush=True)
     ai_error: Exception | None = None
     try:
         data, provider = await ai_service.complete_json(

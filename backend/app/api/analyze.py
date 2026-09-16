@@ -1,6 +1,8 @@
 """Analyze endpoint with multipart upload support, RAG vector indexing, and database persistence."""
 
 import json
+import logging
+from pathlib import PurePath
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
 from sqlalchemy.orm import Session
@@ -12,6 +14,7 @@ from app.db.models import get_db, Analysis, AnalysisOutput, Document, Chunk
 from app.ai.rag import parse_document_file, create_chunks, process_and_vectorize_chunks
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 from app.models.schemas import AnalysisResponse, AnalyzeRequest, DiscoveredRequirements, ConfirmRequirementsRequest
 from app.orchestration.pipeline import run_pipeline, run_downstream_pipeline, resume_pipeline
@@ -30,21 +33,25 @@ async def discover_requirements(
 
     session = session_store.create()
     session.intake = req_data
+    session_docs: list[tuple[str, bytes]] = []
 
-    # Parse and store reference docs in session if provided
+    # Keep uploads in the session until confirmation; only validated files enter persistence.
     if files:
         if len(files) > 2:
             raise HTTPException(status_code=400, detail="Maximum 2 reference documents allowed.")
-        session_docs = []
         for f in files:
+            safe_filename = PurePath(f.filename or "upload").name
+            extension = PurePath(safe_filename).suffix.lower()
+            if extension not in {".pdf", ".docx", ".doc", ".txt", ".md"}:
+                raise HTTPException(status_code=400, detail=f"Unsupported file type: {extension or 'unknown'}")
             content = await f.read()
             if len(content) > 2 * 1024 * 1024:
-                raise HTTPException(status_code=400, detail=f"File {f.filename} exceeds 2MB limit.")
-            session_docs.append((f.filename, content))
-        session.uploaded_docs = session_docs
+                raise HTTPException(status_code=400, detail=f"File {safe_filename} exceeds 2MB limit.")
+            session_docs.append((safe_filename, content))
+    session.uploaded_docs = session_docs
 
     discovered, _ = await run_requirements_discovery_agent(session.session_id, analyze_req)
-    print(discovered,"====================")
+    logger.info("Requirements discovered: session_id=%s files=%d", session.session_id, len(session_docs))
     return discovered
 
 
@@ -61,7 +68,7 @@ async def confirm_requirements(
     analyze_req = payload.intake
     session.intake = analyze_req.model_dump()
 
-    # Process and vectorize uploaded documents if stored in session
+    # Convert validated uploads to durable records and searchable chunks.
     uploaded_docs = getattr(session, "uploaded_docs", [])
     all_chunks_to_vectorize = []
     doc_records = []

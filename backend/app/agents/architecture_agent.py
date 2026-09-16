@@ -188,7 +188,7 @@ def _template_fallback(
 import re
 
 def _generate_dynamic_mermaid(request: AnalyzeRequest, result: ArchitectureRecommendation) -> str:
-    """Dynamically constructs a multi-tiered Mermaid diagram from actual recommended components."""
+    """Build a readable tiered diagram while preserving generated component relationships."""
     components = result.components
     if not components:
         return f"""graph TD
@@ -207,6 +207,19 @@ def _generate_dynamic_mermaid(request: AnalyzeRequest, result: ArchitectureRecom
     compute_nodes = []
     storage_nodes = []
     ai_nodes = []
+    component_ids: dict[str, str] = {}
+    used_ids: set[str] = set()
+
+    def clean(value: str) -> str:
+        return value.replace('"', "'").replace("\n", " ").strip()
+
+    def component_label(node_id: str, component: ArchitectureComponent) -> str:
+        name = clean(component.name)
+        technology = clean(component.technology or "")
+        purpose = clean(component.purpose)
+        detail = f"<br/><b>{technology}</b>" if technology else ""
+        detail += f"<br/><small>{purpose[:100]}</small>" if purpose else ""
+        return f'{node_id}["{name}{detail}"]'
 
     for c in components:
         name_clean = re.sub(r'[^a-zA-Z0-9_\- ]', '', c.name).strip() or "Component"
@@ -214,24 +227,27 @@ def _generate_dynamic_mermaid(request: AnalyzeRequest, result: ArchitectureRecom
         node_id = re.sub(r'[^a-zA-Z0-9]', '', name_clean) or "Node"
         if not node_id[0].isalpha():
             node_id = "N" + node_id
+        base_id = node_id
+        suffix = 2
+        while node_id in used_ids:
+            node_id = f"{base_id}{suffix}"
+            suffix += 1
+        used_ids.add(node_id)
+        component_ids[c.name.lower().strip()] = node_id
+        label = component_label(node_id, c)
 
         if any(w in name_lower for w in ["gateway", "waf", "cdn", "ingress", "frontend", "ui", "client", "proxy", "alb", "cloudfront"]):
-            ingress_nodes.append((node_id, f'{node_id}["{name_clean}"]'))
+            ingress_nodes.append((node_id, label))
         elif any(w in name_lower for w in ["auth", "cognito", "identity", "oidc", "iam", "keycloak", "sso"]):
-            auth_nodes.append((node_id, f'{node_id}["{name_clean}"]'))
+            auth_nodes.append((node_id, label))
         elif any(w in name_lower for w in ["db", "database", "postgres", "mysql", "aurora", "redis", "cache", "s3", "storage", "vector", "pinecone", "opensearch", "qdrant", "chroma", "mongo"]):
-            if any(vw in name_lower for vw in ["vector", "opensearch", "pinecone", "qdrant", "chroma"]):
-                storage_nodes.append((node_id, f'{node_id}[("{name_clean} (Vector Store)")]'))
-            elif any(dw in name_lower for dw in ["db", "database", "postgres", "sql", "aurora", "mysql", "mongo"]):
-                storage_nodes.append((node_id, f'{node_id}[("{name_clean}")]'))
-            else:
-                storage_nodes.append((node_id, f'{node_id}["{name_clean}"]'))
+            storage_nodes.append((node_id, label))
         elif any(w in name_lower for w in ["llm", "ai", "bedrock", "openai", "groq", "model", "gpt", "anthropic", "claude"]):
-            ai_nodes.append((node_id, f'{node_id}["{name_clean}"]'))
+            ai_nodes.append((node_id, label))
         elif any(w in name_lower for w in ["worker", "service", "app", "engine", "backend", "microservice", "celery", "lambda", "ecs", "eks", "k8s", "kubernetes", "processor", "pipeline", "ingest"]):
-            compute_nodes.append((node_id, f'{node_id}["{name_clean}"]'))
+            compute_nodes.append((node_id, label))
         else:
-            compute_nodes.append((node_id, f'{node_id}["{name_clean}"]'))
+            compute_nodes.append((node_id, label))
 
     lines = ["graph TD"]
 
@@ -269,18 +285,35 @@ def _generate_dynamic_mermaid(request: AnalyzeRequest, result: ArchitectureRecom
             lines.append(f'        {lbl}')
         lines.append('    end')
 
-    # Connect tiers
+    # Connect the client and gateway to the primary application component.
     first_compute = compute_nodes[0][0]
     lines.append(f'    GW -->|Authenticated Request| {first_compute}')
 
-    for nid, _ in compute_nodes[1:]:
-        lines.append(f'    {first_compute} --> {nid}')
+    def resolve_component(name: str) -> str | None:
+        normalized = re.sub(r"[^a-z0-9]", "", name.lower())
+        for component_name, node_id in component_ids.items():
+            candidate = re.sub(r"[^a-z0-9]", "", component_name)
+            if normalized == candidate or normalized in candidate or candidate in normalized:
+                return node_id
+        return None
 
-    for nid, _ in storage_nodes:
-        lines.append(f'    {first_compute} -->|Read / Write| {nid}')
+    valid_integrations = 0
+    for integration in result.integration_points:
+        source_id = resolve_component(integration.source)
+        target_id = resolve_component(integration.target)
+        if source_id and target_id and source_id != target_id:
+            protocol = clean(integration.protocol or "connects")
+            lines.append(f'    {source_id} -->|{protocol[:30]}| {target_id}')
+            valid_integrations += 1
 
-    for nid, _ in ai_nodes:
-        lines.append(f'    {first_compute} -->|Infer / Query| {nid}')
+    # Keep a useful fallback when the model omitted usable integration endpoints.
+    if valid_integrations == 0:
+        for nid, _ in compute_nodes[1:]:
+            lines.append(f'    {first_compute} --> {nid}')
+        for nid, _ in storage_nodes:
+            lines.append(f'    {first_compute} -->|Read / Write| {nid}')
+        for nid, _ in ai_nodes:
+            lines.append(f'    {first_compute} -->|Infer / Query| {nid}')
 
     return "\n".join(lines)
 

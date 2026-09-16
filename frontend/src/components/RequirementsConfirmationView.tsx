@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { CheckCircle2, XCircle, HelpCircle, FileCheck, ArrowRight, Edit2, Plus } from 'lucide-react';
 import type { DiscoveredRequirements, DiscoveredRequirementItem, ValidatedRequirementsContext } from '../types';
 

@@ -50,6 +50,51 @@ flowchart TD
 5. **Documentation Agent**:
    - Aggregates all upstream outputs into a clean, standard High-Level Design (HLD) document.
 
+### Core User Workflows
+
+#### Requirements discovery and confirmation
+
+1. A solution architect submits project goals, functional requirements, constraints, and optional reference documents.
+2. The discovery agent extracts explicit requirements, derived capabilities, assumptions, and open questions.
+3. The user accepts, rejects, or clarifies suggested requirements before downstream design begins.
+4. The confirmed context is passed to the requirements, architecture, security, and documentation agents.
+
+#### Analysis recovery and grounded chat
+
+```mermaid
+sequenceDiagram
+   participant User
+   participant UI as React UI
+   participant API as FastAPI API
+   participant Agents as Agent Pipeline
+   participant DB as SQLite/PostgreSQL
+   participant LLM as Configured AI Provider
+
+   User->>UI: Submit intake and documents
+   UI->>API: Discover requirements
+   API->>LLM: Extract structured requirements
+   LLM-->>API: Requirements and questions
+   API-->>UI: Confirmation view
+   User->>UI: Confirm scope and answers
+   UI->>API: Start downstream analysis
+   API->>Agents: Run sequential stages
+   Agents->>LLM: Generate architecture and reviews
+   Agents->>DB: Persist outputs and chunks
+   API-->>UI: HLD results and status
+   User->>UI: Ask a project question
+   UI->>API: Chat request
+   API->>DB: Retrieve analysis context and chunks
+   API->>LLM: Answer with grounded context
+   LLM-->>UI: Grounded answer or scope refusal
+```
+
+#### Practical use cases
+
+- A procurement architect validates vendor onboarding requirements before architecture decisions are made.
+- A security reviewer uses the generated threat model to identify missing controls and compliance questions.
+- A delivery lead asks for documented constraints, assumptions, technology choices, or unresolved decisions.
+- An operator resumes an analysis after a provider timeout; completed stages remain available and missing stages are rerun.
+
 ---
 
 ## ✨ Key Features
@@ -228,16 +273,20 @@ The React frontend application will be live at `http://localhost:5173`.
 - AI responses are grounded in the stored analysis outputs and retrieved project documents. Missing decisions are reported as unspecified rather than invented.
 - Default limits are 2 uploaded documents per discovery request, 2 MB per document, 4,000 characters per chat message, and 60 seconds per agent call.
 - Generated architecture recommendations require human review before implementation, security approval, or compliance sign-off.
+- Provider calls are restricted to the configured `AI_PROVIDER`; a failed Azure request cannot silently invoke another provider.
 
 #### Testing and observability
 
 The implementation supports positive and negative checks for request validation, provider selection, AI failure handling, JSON parsing, template fallback, session lookup, off-topic refusal, RAG retrieval, and resumable pipeline stages. Backend events use standard Python logging and record provider, agent, session, and retrieval metadata without recording API keys or chat content.
 
-Run the available static validation from `backend`:
+Run the automated checks and static validation from `backend`:
 
 ```powershell
 .\.venv\Scripts\python.exe -m compileall app
+\.\.venv\Scripts\python.exe -m pytest tests -q
 ```
+
+The test suite covers request-size validation, project-topic guardrails, and provider isolation. Dependencies are pinned by minimum supported versions in `backend/requirements.txt`; FastAPI, Pydantic v2, SQLAlchemy, HTTPX, scikit-learn, and the OpenAI-compatible client are used through their documented APIs.
 
 #### Configuration and secrets
 

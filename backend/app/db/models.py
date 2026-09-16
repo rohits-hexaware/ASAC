@@ -73,10 +73,8 @@ class ChatMessage(Base):
 
     analysis = relationship("Analysis", back_populates="chat_messages")
 
-# Database connection setup
-# SQLite default: sqlite:///./data/asac.db
-# Postgres example: postgresql://user:password@localhost:5432/asac
-database_url = getattr(settings, "DATABASE_URL", "sqlite:///./data/asac.db")
+# Database connection setup. The typed settings object is the single source of truth.
+database_url = settings.database_url
 
 connect_args = {}
 if database_url.startswith("sqlite"):
